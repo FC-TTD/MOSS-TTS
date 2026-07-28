@@ -1,0 +1,56 @@
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    HF_HOME=/data/hf \
+    HF_HUB_CACHE=/data/hf/hub \
+    TRANSFORMERS_CACHE=/data/hf/hub
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    git \
+    libsndfile1 \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md README_zh.md LICENSE /app/
+
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --torch-backend cu128 \
+    safetensors==0.6.2 \
+    numpy==2.1.0 \
+    orjson==3.11.4 \
+    tqdm==4.67.1 \
+    PyYAML==6.0.3 \
+    einops==0.8.1 \
+    scipy==1.16.2 \
+    librosa==0.11.0 \
+    tiktoken==0.12.0 \
+    psutil \
+    packaging \
+    ninja \
+    setuptools \
+    wheel \
+    gradio \
+    torch==2.9.1+cu128 \
+    torchaudio==2.9.1+cu128 \
+    transformers==5.0.0
+
+COPY assets /app/assets
+COPY clis /app/clis
+COPY moss_audio_tokenizer /app/moss_audio_tokenizer
+COPY moss_tts_delay /app/moss_tts_delay
+COPY moss_tts_local /app/moss_tts_local
+COPY moss_tts_realtime /app/moss_tts_realtime
+COPY docs /app/docs
+COPY configs /app/configs
+COPY scripts /app/scripts
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "clis/moss_tts_app.py", "--host", "0.0.0.0", "--port", "30921", "--device", "cuda:0", "--skip_preload"]

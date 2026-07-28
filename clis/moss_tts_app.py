@@ -9,6 +9,8 @@ import orjson
 import gradio as gr
 import numpy as np
 import torch
+import torchaudio
+import librosa
 from transformers import AutoModel, AutoProcessor
 
 # Disable the broken cuDNN SDPA backend
@@ -75,6 +77,29 @@ def build_example_rows() -> list[tuple[str, str, str]]:
 
 
 EXAMPLE_ROWS = build_example_rows()
+
+
+_ORIGINAL_TORCHAUDIO_LOAD = torchaudio.load
+
+
+def _torchaudio_load_with_fallback(filepath, *args, **kwargs):
+    try:
+        return _ORIGINAL_TORCHAUDIO_LOAD(filepath, *args, **kwargs)
+    except ImportError as exc:
+        # torchaudio 2.9 may route decoding through torchcodec, which is not
+        # available for this preview image. Fallback to librosa so reference
+        # audio inputs still work.
+        if "torchcodec" not in str(exc).lower():
+            raise
+
+        wav, sr = librosa.load(filepath, sr=None, mono=False)
+        wav = np.asarray(wav, dtype=np.float32)
+        if wav.ndim == 1:
+            wav = wav[np.newaxis, :]
+        return torch.from_numpy(wav), int(sr)
+
+
+torchaudio.load = _torchaudio_load_with_fallback
 
 
 @functools.lru_cache(maxsize=1)
@@ -582,6 +607,11 @@ def main():
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--share", action="store_true")
+    parser.add_argument(
+        "--skip_preload",
+        action="store_true",
+        help="Skip startup backend preload so the Gradio page can come up before model download finishes.",
+    )
     args = parser.parse_args()
 
     runtime_device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -593,21 +623,24 @@ def main():
     ) or "none"
     print(f"[INFO] Using attn_implementation={args.attn_implementation}", flush=True)
 
-    # Preload model/processor at startup to avoid first-request cold start latency.
-    preload_started_at = time.monotonic()
-    print(
-        f"[Startup] Preloading backend: model={args.model_path}, device={args.device}, attn={args.attn_implementation}",
-        flush=True,
-    )
-    load_backend(
-        model_path=args.model_path,
-        device_str=args.device,
-        attn_implementation=args.attn_implementation,
-    )
-    print(
-        f"[Startup] Backend preload finished in {time.monotonic() - preload_started_at:.2f}s",
-        flush=True,
-    )
+    if args.skip_preload:
+        print("[Startup] Backend preload skipped; first request will trigger model load.", flush=True)
+    else:
+        # Preload model/processor at startup to avoid first-request cold start latency.
+        preload_started_at = time.monotonic()
+        print(
+            f"[Startup] Preloading backend: model={args.model_path}, device={args.device}, attn={args.attn_implementation}",
+            flush=True,
+        )
+        load_backend(
+            model_path=args.model_path,
+            device_str=args.device,
+            attn_implementation=args.attn_implementation,
+        )
+        print(
+            f"[Startup] Backend preload finished in {time.monotonic() - preload_started_at:.2f}s",
+            flush=True,
+        )
 
     demo = build_demo(args)
     demo.queue(max_size=16, default_concurrency_limit=1).launch(

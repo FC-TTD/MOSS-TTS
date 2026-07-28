@@ -1,0 +1,41 @@
+name: moss-tts-preview
+
+services:
+  moss-tts-preview:
+    image: moss-tts-preview:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.preview
+    container_name: moss-tts-preview
+    restart: unless-stopped
+    shm_size: "16gb"
+    ports:
+      - "30921:30921"
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+      NVIDIA_VISIBLE_DEVICES: "0"
+      HF_HOME: "/data/hf"
+      HF_HUB_CACHE: "/data/hf/hub"
+      TRANSFORMERS_CACHE: "/data/hf/hub"
+      GRADIO_SERVER_NAME: "0.0.0.0"
+      GRADIO_SERVER_PORT: "30921"
+    volumes:
+      - ../assets:/app/assets:ro
+      - ../clis:/app/clis:ro
+      - ${MOSS_TTS_DATA_DIR:-../.data/moss-tts-preview}/hf:/data/hf
+      - ${MOSS_TTS_DATA_DIR:-../.data/moss-tts-preview}/outputs:/app/inference_root
+    gpus:
+      - driver: nvidia
+        device_ids: ["0"]
+        capabilities: [gpu]
+    working_dir: /app
+    command:
+      - python
+      - clis/moss_tts_app.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30921"
+      - --device
+      - cuda:0
+      - --skip_preload
