@@ -27,7 +27,7 @@ services:
       DEVICE: cuda:0
       ATTN_IMPLEMENTATION: auto
       MOSS_TOKENS_PER_SECOND: '12.5'
-      NVIDIA_VISIBLE_DEVICES: GPU-658f2323-d990-2adf-d488-d5dd945a27d5
+      NVIDIA_VISIBLE_DEVICES: '0'
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
     - /TTD-Data/openmoss/moss-tts-v15:/data
@@ -68,7 +68,7 @@ services:
           devices:
           - driver: nvidia
             device_ids:
-            - GPU-658f2323-d990-2adf-d488-d5dd945a27d5
+            - '0'
             capabilities:
             - gpu
 networks:
