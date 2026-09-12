@@ -51,7 +51,7 @@ The runtime keeps the existing host port17870 and restart policy.
 
 1. Start the candidate from the committed compose and immutable image.
 2. Perform an actual short synthesis through `/generate`; validate WAV output,
-   CUDA PID/UUID, main/tokenizer placement, and existing speed/duration behavior.
+   CUDA PID/UUID, original main-GPU/tokenizer-CPU placement, and existing speed/duration behavior.
    Do not initialize a second model through an auxiliary `docker exec` process.
 3. Change only `MOSS_HOST=moss-tts`, recreate this worker container to apply the
    formal discovery label, and recheck the API/WebUI and actual synthesis.
