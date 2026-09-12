@@ -1,0 +1,5 @@
+{
+  "image": "registry.ttd/moss-tts/fusion@sha256:d32ae9314890ee0a2140a39cde4845453c6868c14c1388a4628e0b24cd1b0505",
+  "config_digest": "sha256:f267ece35e105803ac7f925dacaa325dafedf743c7dd8b4a05d6994eb5913a88",
+  "source": "unchanged existing edge formal image"
+}
