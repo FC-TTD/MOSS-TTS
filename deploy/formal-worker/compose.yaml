@@ -22,7 +22,7 @@ services:
       HF_HUB_DISABLE_XET: '1'
       MODEL_PATH: /models/MOSS-TTS-v1.5
       MOSS_CODEC_PATH: /models/MOSS-Audio-Tokenizer
-      MOSS_AUDIO_TOKENIZER_DEVICE: cuda:0
+      MOSS_AUDIO_TOKENIZER_DEVICE: cpu
       MODEL_IDLE_TIMEOUT: '7200'
       DEVICE: cuda:0
       ATTN_IMPLEMENTATION: auto

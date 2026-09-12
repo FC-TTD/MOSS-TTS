@@ -11,13 +11,14 @@ exact copies of the four active Python files, excluding backups and bytecode;
 the existing formal service, not a claim that upstream preview source implements
 the same formal API. Do not rebuild the old mutable preview base.
 
-One explicit placement correction is necessary for the user's no-CPU-inference
-requirement: old `MOSS_AUDIO_TOKENIZER_DEVICE=cpu` becomes `cuda:0`. Both the main
-model and audio tokenizer use worker GPU0. This may increase VRAM occupancy;
-if the existing model cannot run there, stop and report instead of introducing
-CPU/offload or changing inference behavior. Worker had one free 24GiB3090 and
-about69GiB host RAM available at preparation time; these are snapshots, not peak
-guarantees. SVC-v1 is being handled separately on worker GPU2.
+Preserve the existing placement within the model: main model `DEVICE=cuda:0`,
+audio tokenizer `MOSS_AUDIO_TOKENIZER_DEVICE=cpu`, as on edge. The user clarified
+that existing CPU/GPU design must be respected; the ban is on introducing new
+CPU/offload schemes, not forcing existing CPU components onto a GPU. The proposed
+dual-GPU layout was never deployed and has been withdrawn. Use only worker GPU0.
+No model algorithm, precision, caching, memory limit or guard change is included.
+Worker has about69GiB host RAM available at preparation time; no stage operation
+is involved. SVC-v1 is handled independently on worker GPU2.
 
 ## Image and source preparation
 
