@@ -1,0 +1,76 @@
+name: moss-tts-formal
+services:
+  moss-tts:
+    container_name: moss-tts-formal
+    image: ${MOSS_IMAGE:?set immutable image digest}
+    restart: unless-stopped
+    ports:
+    - 17870:8000
+    labels:
+      caddy: http://${MOSS_HOST:?set deployment hostname}
+      caddy.reverse_proxy: '{{upstreams 8000}}'
+      caddy.reverse_proxy.health_uri: /health
+      caddy.reverse_proxy.health_interval: 10s
+      caddy.reverse_proxy.health_timeout: 3s
+      caddy.reverse_proxy.health_status: '200'
+      caddy.reverse_proxy.health_fails: '1'
+      caddy.reverse_proxy.health_passes: '1'
+      caddy.reverse_proxy.lb_policy: random
+    environment:
+      HF_HOME: /data/hf
+      TRANSFORMERS_CACHE: /data/hf/hub
+      HF_HUB_DISABLE_XET: '1'
+      MODEL_PATH: /models/MOSS-TTS-v1.5
+      MOSS_CODEC_PATH: /models/MOSS-Audio-Tokenizer
+      MOSS_AUDIO_TOKENIZER_DEVICE: cpu
+      MODEL_IDLE_TIMEOUT: '7200'
+      DEVICE: cuda:0
+      ATTN_IMPLEMENTATION: auto
+      MOSS_TOKENS_PER_SECOND: '12.5'
+      NVIDIA_VISIBLE_DEVICES: '0'
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+    - /TTD-Data/openmoss/moss-tts-v15:/data
+    - /TTD-Data/openmoss/modelscope/MOSS-TTS-v1.5:/models/MOSS-TTS-v1.5:ro
+    - /TTD-Data/openmoss/modelscope/MOSS-Audio-Tokenizer:/models/MOSS-Audio-Tokenizer:ro
+    - ${MOSS_RUNTIME_DIR:?set committed runtime path}/clis/moss_tts_app.py:/app/clis/moss_tts_app.py:ro
+    - ${MOSS_RUNTIME_DIR:?set committed runtime path}/api:/app/api:ro
+    networks:
+    - default
+    - caddy
+    command:
+    - python
+    - -m
+    - uvicorn
+    - api.fusion:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --timeout-graceful-shutdown
+    - '60'
+    - --log-level
+    - info
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',
+        timeout=5).read()
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids:
+            - '0'
+            capabilities:
+            - gpu
+networks:
+  caddy:
+    external: true
