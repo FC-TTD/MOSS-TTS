@@ -24,7 +24,7 @@ class NativeBackend:
         self.model_path = model_path
         self.device = device
         self.attention = attention
-        self._lock = threading.RLock()
+        self._codec_lock = threading.RLock()
         main_device, main_dtype = actual_tensor_placement(backend[0])
         audio_device, audio_dtype = actual_tensor_placement(getattr(backend[1], "audio_tokenizer", None))
         self.__hub_device_summary__ = {
@@ -37,13 +37,14 @@ class NativeBackend:
     def infer(self, text, reference_audio, mode_with_reference,
               duration_control_enabled, duration_tokens, language_tag,
               temperature, top_p, top_k, repetition_penalty, max_new_tokens):
-        with self._lock:
-            return self.native.run_inference(
-                text, reference_audio, mode_with_reference,
-                duration_control_enabled, duration_tokens, language_tag,
-                temperature, top_p, top_k, repetition_penalty,
-                self.model_path, self.device, self.attention, max_new_tokens,
-            )
+        from .inference import run_inference
+        return run_inference(
+            text, reference_audio, mode_with_reference,
+            duration_control_enabled, duration_tokens, language_tag,
+            temperature, top_p, top_k, repetition_penalty,
+            self.model_path, self.device, self.attention, max_new_tokens,
+            backend=self.backend, codec_lock=self._codec_lock, native=self.native,
+        )
 
 
 def load_model():

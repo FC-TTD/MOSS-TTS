@@ -23,3 +23,6 @@ Run with the model root and `tests` plus Hub SDK `src` on PYTHONPATH:
 ```sh
 PYTHONPATH=/path/to/ttd-hub/sdk/python/src:tests:. GRADIO_ANALYTICS_ENABLED=False HF_HUB_DISABLE_TELEMETRY=1 python -m unittest discover -s tests -p test_hub_runtime.py -v
 ```
+
+
+Concurrency: native LM generation uses request-local KV and shares the same weights. Only processor input/codec and output decode hold a codec lock because the CPU audio tokenizer owns mutable streaming state. The native API parameters/status and tokenizer placement remain unchanged. UI generation can dispatch concurrently. GPU throughput/peak acceptance accompanies this release; no claim of arbitrary unbounded GPU capacity.

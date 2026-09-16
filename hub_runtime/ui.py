@@ -533,6 +533,7 @@ def build_ui(runtime):
         run_btn.click(
             fn=managed_inference,
             api_name="lambda",
+            concurrency_limit=None,
             inputs=[
                 text,
                 reference_audio,
