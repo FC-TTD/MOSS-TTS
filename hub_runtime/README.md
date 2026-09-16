@@ -1,5 +1,7 @@
 # MOSS managed runtime
 
+2026-09-16: formally managed on worker; existing domains, native API/UI and Gateway acceptance passed. Current reservation: 20 GiB. Full evidence: Hub `docs/proposals/model-compute-pool/worker-expansion-2026-09-16.md`. Runtime source: `927389a`; subsequent documentation commits do not change the deployed model image.
+
 Baseline: `10273b9` on `FC-TTD/MOSS-TTS`, matching the worker formal runtime overrides.
 Only new `hub_runtime/` and test files are added; the native source files remain unchanged.
 
