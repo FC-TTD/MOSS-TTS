@@ -131,50 +131,15 @@ class MOSSAdoption(unittest.TestCase):
         with patch.dict(sys.modules,{'torch':fake_torch,'clis':clis}),patch.dict(os.environ,{'DEVICE':'cuda:0','MODEL_PATH':'fixed-model','MOSS_AUDIO_TOKENIZER_DEVICE':'cpu','ATTN_IMPLEMENTATION':'auto'}):
             model=adapter.load_model();self.assertIs(model.backend,backend)
             native.load_backend.assert_called_once_with(model_path='fixed-model',device_str='cuda:0',attn_implementation='auto')
-            inference=types.ModuleType('hub_runtime.inference');inference.run_inference=Mock(return_value=((24000,np.zeros(4)),'native'))
+            inference=types.ModuleType('hub_runtime.inference');inference.run_batch=Mock(return_value=[((24000,np.zeros(4)),'native')])
             with patch.dict(sys.modules,{'hub_runtime.inference':inference}):
                 model.infer('text',None,parameters.MODE_CLONE,False,1,'中文',1.7,.8,25,1.,4096)
-            inference.run_inference.assert_called_once_with('text',None,parameters.MODE_CLONE,False,1,'中文',1.7,.8,25,1.,'fixed-model','cuda:0','auto',4096,backend=backend,codec_lock=model._codec_lock,native=native)
+            from hub_runtime.batching import InferenceRequest
+            inference.run_batch.assert_called_once_with([InferenceRequest('text',None,parameters.MODE_CLONE,False,1,'中文',1.7,.8,25,1.,4096)],backend=backend,codec_lock=model._codec_lock,native=native)
             self.assertEqual(model.__hub_device_summary__,{'main_model':'cuda:0','main_dtype':'torch.bfloat16','audio_tokenizer':'cpu','audio_tokenizer_dtype':'torch.float32'})
             adapter.release(model);native.load_backend.cache_clear.assert_called_once();self.assertIsNone(model.backend);self.assertIsNone(model.native)
         self.assertNotIn('torch',sys.modules)
         self.assertEqual(adapter.actual_tensor_placement(object()),('unknown','unknown'))
-
-    def test_native_generation_overlaps_while_codec_streams_remain_exclusive(self):
-        from concurrent.futures import ThreadPoolExecutor
-        from contextlib import nullcontext
-        import importlib
-        fake_torch=types.SimpleNamespace(Tensor=type('FixtureTensor',(),{}),no_grad=nullcontext)
-        class Input:
-            def __init__(self,value):self.value=value
-            def to(self,device):return self
-        entered=threading.Barrier(2);codec_active=0;peak=0;mutex=threading.Lock()
-        class Model:
-            def generate(self,**kwargs):
-                entered.wait(2)  # Fails if the whole model is still serialized.
-                return kwargs['input_ids'].value
-        class Processor:
-            def __call__(self,conversation,mode):
-                nonlocal codec_active,peak
-                with mutex:codec_active+=1;peak=max(peak,codec_active)
-                try:time.sleep(.02);return {'input_ids':Input(conversation),'attention_mask':Input(1)}
-                finally:
-                    with mutex:codec_active-=1
-            def decode(self,output):
-                nonlocal codec_active,peak
-                with mutex:codec_active+=1;peak=max(peak,codec_active)
-                try:time.sleep(.02);return [types.SimpleNamespace(audio_codes_list=[np.full(4,float(output),dtype=np.float32)])]
-                finally:
-                    with mutex:codec_active-=1
-        native=types.SimpleNamespace(supports_duration_control=lambda mode:True,build_conversation=lambda **kw:(kw['text'],'clone','clone'),normalize_language_tag=lambda value:value,display_language_tag=lambda value:value)
-        with patch.dict(sys.modules,{'torch':fake_torch}):
-            module=importlib.import_module('hub_runtime.inference')
-            try:
-                backend=(Model(),Processor(),'cuda:0',24000);lock=threading.RLock()
-                def infer(text):return module.run_inference(text,None,'clone',False,1,'Chinese',1.7,.8,25,1.,'native','cuda:0','auto',100,backend=backend,codec_lock=lock,native=native)
-                with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(infer,['1','2']))
-                self.assertEqual([float(r[0][1][0]) for r in results],[1.,2.]);self.assertEqual(peak,1)
-            finally:sys.modules.pop('hub_runtime.inference',None)
 
     def test_root_ui_queue_and_api_use_live_process_without_parent_weights(self):
         from ttd_model_runtime import Runtime

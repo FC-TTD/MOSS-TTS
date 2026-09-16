@@ -2,6 +2,7 @@
 import gc
 import os
 import threading
+from .batching import RequestBatcher, InferenceRequest
 
 
 def actual_tensor_placement(module):
@@ -33,18 +34,23 @@ class NativeBackend:
             "audio_tokenizer": audio_device,
             "audio_tokenizer_dtype": audio_dtype,
         }
+        self._batcher = RequestBatcher(self._infer_batch)
+
+    def _infer_batch(self, requests):
+        from .inference import run_batch
+        return run_batch(requests,backend=self.backend,codec_lock=self._codec_lock,native=self.native)
+
+    def batching_status(self):
+        return self._batcher.snapshot()
 
     def infer(self, text, reference_audio, mode_with_reference,
               duration_control_enabled, duration_tokens, language_tag,
               temperature, top_p, top_k, repetition_penalty, max_new_tokens):
-        from .inference import run_inference
-        return run_inference(
-            text, reference_audio, mode_with_reference,
-            duration_control_enabled, duration_tokens, language_tag,
-            temperature, top_p, top_k, repetition_penalty,
-            self.model_path, self.device, self.attention, max_new_tokens,
-            backend=self.backend, codec_lock=self._codec_lock, native=self.native,
-        )
+        return self._batcher.submit(InferenceRequest(
+            text,reference_audio,mode_with_reference,duration_control_enabled,
+            duration_tokens,language_tag,float(temperature),float(top_p),int(top_k),
+            float(repetition_penalty),int(max_new_tokens),
+        ))
 
 
 def load_model():
@@ -75,6 +81,7 @@ def completion(model):
 def release(model):
     # Native lru_cache otherwise retains both model and processor after the
     # facade is dropped. Clear it before SDK releases the facade/allocator.
+    model._batcher.close()
     if model.native is not None:
         model.native.load_backend.cache_clear()
     model.backend = None

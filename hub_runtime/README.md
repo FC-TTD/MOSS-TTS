@@ -26,3 +26,21 @@ PYTHONPATH=/path/to/ttd-hub/sdk/python/src:tests:. GRADIO_ANALYTICS_ENABLED=Fals
 
 
 Concurrency: native LM generation uses request-local KV and shares the same weights. Only processor input/codec and output decode hold a codec lock because the CPU audio tokenizer owns mutable streaming state. The native API parameters/status and tokenizer placement remain unchanged. UI generation can dispatch concurrently. GPU throughput/peak acceptance accompanies this release; no claim of arbitrary unbounded GPU capacity.
+
+
+Concurrent request batching: `RequestBatcher` keeps one persistent native thread
+per residency. Compatible requests arriving within 2 ms share a native batch of
+at most four rows; other groups execute sequentially on that same native thread.
+The original processor left-pads conversations and produces `[B,T,n_vq+1]` input
+and `[B,T]` masks; native `generate()` and `decode()` return one ordered result per
+row. Each caller retains its own SDK/Hub activity until its result arrives.
+
+Only repetition_penalty=1.0 is coalesced. The deployed native inference utility
+flattens token history across batch rows for non-default repetition penalties;
+those requests remain single-row calls so another request never changes their
+penalty history. Sampling parameters/max_new_tokens/reference mode must match;
+language and explicit duration tokens remain per-conversation values. Main dtype,
+GPU selection and CPU codec placement are unchanged. A failed batch fails all
+members once; no automatic individual retries or replay. Release waits for the
+native lane to finish before clearing cached weights. Logs record batch sizes
+and elapsed time, without request text, audio or credentials.
