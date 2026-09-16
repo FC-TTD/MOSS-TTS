@@ -1,6 +1,6 @@
 # MOSS managed runtime
 
-2026-09-16: formally managed on worker; existing domains, native API/UI and Gateway acceptance passed. Current reservation: 20 GiB. Full evidence: Hub `docs/proposals/model-compute-pool/worker-expansion-2026-09-16.md`. Runtime source: `927389a`; subsequent documentation commits do not change the deployed model image.
+2026-09-16: formally managed on worker; existing domains, native API/UI and Gateway acceptance passed. Current reservation: 20 GiB. Full evidence: Hub `docs/proposals/model-compute-pool/worker-expansion-2026-09-16.md`. Latest validated runtime source: `17a6494`; the original adoption source was `927389a`. Documentation commits do not change the deployed image.
 
 Baseline: `10273b9` on `FC-TTD/MOSS-TTS`, matching the worker formal runtime overrides.
 Only new `hub_runtime/` and test files are added; the native source files remain unchanged.
@@ -25,32 +25,18 @@ PYTHONPATH=/path/to/ttd-hub/sdk/python/src:tests:. GRADIO_ANALYTICS_ENABLED=Fals
 ```
 
 
-Concurrency: native LM generation uses request-local KV and shares the same weights. Only processor input/codec and output decode hold a codec lock because the CPU audio tokenizer owns mutable streaming state. The native API parameters/status and tokenizer placement remain unchanged. UI generation can dispatch concurrently. GPU throughput/peak acceptance accompanies this release; no claim of arbitrary unbounded GPU capacity.
+Current concurrency boundary: `RequestBatcher` runs a single persistent native
+thread with **max_batch_size=1, window_seconds=0**; `run_batch` rejects B>1.
+Each HTTP caller keeps its own SDK activity while waiting/executing, but native
+inference remains serial. Healthy weights stay resident after completion and
+across idle periods; only pool pressure or explicit lifecycle control unloads.
+Release waits for the native lane before clearing the lru and model references.
 
-
-Concurrent request batching: `RequestBatcher` keeps one persistent native thread
-per residency. Compatible requests arriving within 2 ms share a native batch of
-at most four rows; other groups execute sequentially on that same native thread.
-The original processor left-pads conversations and produces `[B,T,n_vq+1]` input
-and `[B,T]` masks; native `generate()` and `decode()` return one ordered result per
-row. Each caller retains its own SDK/Hub activity until its result arrives.
-
-Only repetition_penalty=1.0 is coalesced. The deployed native inference utility
-flattens token history across batch rows for non-default repetition penalties;
-those requests remain single-row calls so another request never changes their
-penalty history. Sampling parameters/max_new_tokens/reference mode must match;
-language and explicit duration tokens remain per-conversation values. Main dtype,
-GPU selection and CPU codec placement are unchanged. A failed batch fails all
-members once; no automatic individual retries or replay. Release waits for the
-native lane to finish before clearing cached weights. Logs record batch sizes
-and elapsed time, without request text, audio or credentials.
-
-
-Final GPU acceptance supersedes the proposed multirow batching above: the formal
-backend emits EOS for B=1, but B=2/4 ran to max_new_tokens and produced anomalous
-58.88s output from the same short text. Multirow inference is explicitly rejected
-and the native worker is fixed to B=1 with no coalescing delay. The persistent
-worker preserves warm weights and avoids per-request native thread recreation;
-MOSS currently retains native serial execution. No dtype, attention backend or
-model algorithm was changed to make the test pass. Generic scheduler fixtures do
-not certify MOSS B>1; real evidence and deferred work are in the Hub report.
+Real GPU testing rejected both direct multithreading (four requests took111s
+versus21s sequential) and native multirow batching (B=2/4 failed to produce EOS
+and emitted58.88s from the same text whose valid B=1 output is7.6s). No attention,
+dtype, offload or native sampling algorithm was changed to conceal the issue.
+Final12 requests all matched the correct7.6s waveform SHA256; after60s idle the
+same engine served the next request in5.82s. Generic CPU queue fixtures are not
+proof of native B>1 correctness. Final source is `17a6494`, current20GiB budget
+and exact evidence are in Hub `runtime-concurrency-2026-09-16.md`.
