@@ -1,0 +1,12 @@
+**
+!hub_runtime/
+!hub_runtime/**
+hub_runtime/**/__pycache__/
+hub_runtime/**/*.pyc
+!deploy/
+!deploy/formal-worker/
+!deploy/formal-worker/runtime/
+!deploy/formal-worker/runtime/**
+!deploy/hub/
+!deploy/hub/Dockerfile
+!deploy/hub/Dockerfile.dockerignore

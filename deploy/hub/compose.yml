@@ -1,0 +1,66 @@
+name: moss-hub
+services:
+  runtime:
+    image: ${MOSS_IMAGE:?fixed MOSS hub image}
+    container_name: moss-hub-runtime
+    restart: 'no'
+    command: [/opt/venv/bin/python, -m, hub_runtime]
+    environment:
+      HUB_SERVICE_ID: moss-tts
+      HUB_RUNTIME_VERSION: ${MOSS_RUNTIME_VERSION:?}
+      HUB_RUNTIME_ACTOR_ID: ${MOSS_ACTOR_ID:?}
+      HUB_RUNTIME_TOKEN: ${HUB_MOSS_RUNTIME_TOKEN:?}
+      HUB_RUNTIME_STATE_DIR: /var/lib/hub-runtime/actors/${MOSS_ACTOR_ID:?}
+      HUB_NODE_URL: http://host.docker.internal:13912
+      HUB_CONTROL_HOST: '0.0.0.0'
+      HUB_CONTROL_PORT: '18083'
+      HUB_GPU_PROCESS: '1'
+      CUDA_VISIBLE_DEVICES: ''
+      NVIDIA_VISIBLE_DEVICES: '${GPU_0:?},${GPU_1:?},${GPU_2:?}'
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      MODEL_PATH: /models/MOSS-TTS-v1.5
+      DEVICE: cuda:0
+      ATTN_IMPLEMENTATION: auto
+      MOSS_CODEC_PATH: /models/MOSS-Audio-Tokenizer
+      MOSS_AUDIO_TOKENIZER_DEVICE: cpu
+      MOSS_TOKENS_PER_SECOND: '12.5'
+      MOSS_PRELOAD: '0'
+      HF_HOME: /data/hf
+      TRANSFORMERS_CACHE: /data/hf/hub
+      HF_HUB_DISABLE_XET: '1'
+      TTD_WEBHOOK_URL: ''
+      GRADIO_ANALYTICS_ENABLED: 'False'
+    extra_hosts: ['host.docker.internal:host-gateway']
+    ports: ['127.0.0.1:13916:18083']
+    volumes:
+      - /opt/ttd-hub-v2/runtime-state/moss:/var/lib/hub-runtime
+      - /TTD-Data/openmoss/moss-tts-v15:/data
+      - /TTD-Data/openmoss/modelscope/MOSS-TTS-v1.5:/models/MOSS-TTS-v1.5:ro
+      - /TTD-Data/openmoss/modelscope/MOSS-Audio-Tokenizer:/models/MOSS-Audio-Tokenizer:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${GPU_0:?}', '${GPU_1:?}', '${GPU_2:?}']
+              capabilities: [gpu]
+    networks: [model]
+    labels:
+      ttd.hub.instance: moss-tts
+      ttd.hub.release: ${MOSS_RELEASE:?}
+      ttd.hub.dynamic_gpu: 'true'
+  entry:
+    image: ${HUB_IMAGE:?fixed Hub image}
+    container_name: moss-hub-entry
+    restart: unless-stopped
+    entrypoint: [/usr/local/bin/model-entry]
+    command: [--upstream, 'http://runtime:8000', --listen, ':8080']
+    networks: [model, caddy]
+    labels:
+      ttd.hub.release: ${MOSS_RELEASE:?}
+      caddy_ingress_network: caddy
+      caddy: http://moss-pool-validation
+      caddy.reverse_proxy: '{{upstreams 8080}}'
+networks:
+  model: {}
+  caddy: {external: true}

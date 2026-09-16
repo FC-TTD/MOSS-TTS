@@ -1,0 +1,14 @@
+# Transfer the existing domain only after managed API/UI acceptance.
+services:
+  entry:
+    labels: !override
+      ttd.hub.release: ${MOSS_RELEASE:?}
+      caddy_ingress_network: caddy
+      caddy: http://moss-tts
+      caddy.reverse_proxy: '{{upstreams 8080}}'
+      caddy.reverse_proxy.health_uri: /hub-entry/health
+      caddy.reverse_proxy.health_interval: 10s
+      caddy.reverse_proxy.health_timeout: 3s
+      caddy.reverse_proxy.health_status: '200'
+      caddy.reverse_proxy.health_fails: '1'
+      caddy.reverse_proxy.health_passes: '1'
