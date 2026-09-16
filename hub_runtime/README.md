@@ -44,3 +44,13 @@ GPU selection and CPU codec placement are unchanged. A failed batch fails all
 members once; no automatic individual retries or replay. Release waits for the
 native lane to finish before clearing cached weights. Logs record batch sizes
 and elapsed time, without request text, audio or credentials.
+
+
+Final GPU acceptance supersedes the proposed multirow batching above: the formal
+backend emits EOS for B=1, but B=2/4 ran to max_new_tokens and produced anomalous
+58.88s output from the same short text. Multirow inference is explicitly rejected
+and the native worker is fixed to B=1 with no coalescing delay. The persistent
+worker preserves warm weights and avoids per-request native thread recreation;
+MOSS currently retains native serial execution. No dtype, attention backend or
+model algorithm was changed to make the test pass. Generic scheduler fixtures do
+not certify MOSS B>1; real evidence and deferred work are in the Hub report.

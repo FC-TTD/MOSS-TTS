@@ -34,7 +34,10 @@ class NativeBackend:
             "audio_tokenizer": audio_device,
             "audio_tokenizer_dtype": audio_dtype,
         }
-        self._batcher = RequestBatcher(self._infer_batch)
+        # Published MOSS weights/backend produce no EOS for B>1 in real GPU
+        # acceptance. Keep one persistent native lane; transport concurrency
+        # remains available to models with validated native concurrent state.
+        self._batcher = RequestBatcher(self._infer_batch, max_batch_size=1, window_seconds=0)
 
     def _infer_batch(self, requests):
         from .inference import run_batch

@@ -130,6 +130,7 @@ class MOSSAdoption(unittest.TestCase):
         clis=types.ModuleType('clis');clis.moss_tts_app=native
         with patch.dict(sys.modules,{'torch':fake_torch,'clis':clis}),patch.dict(os.environ,{'DEVICE':'cuda:0','MODEL_PATH':'fixed-model','MOSS_AUDIO_TOKENIZER_DEVICE':'cpu','ATTN_IMPLEMENTATION':'auto'}):
             model=adapter.load_model();self.assertIs(model.backend,backend)
+            self.assertEqual(model._batcher.max_batch_size,1);self.assertEqual(model._batcher.window_seconds,0)
             native.load_backend.assert_called_once_with(model_path='fixed-model',device_str='cuda:0',attn_implementation='auto')
             inference=types.ModuleType('hub_runtime.inference');inference.run_batch=Mock(return_value=[((24000,np.zeros(4)),'native')])
             with patch.dict(sys.modules,{'hub_runtime.inference':inference}):

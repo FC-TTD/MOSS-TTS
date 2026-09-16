@@ -1,4 +1,4 @@
-"""CPU proofs of request ownership, native batching and natural shutdown."""
+"""CPU queue ownership tests; native multirow inference is deliberately rejected."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import replace
@@ -136,10 +136,15 @@ class NativeBatchShape(unittest.TestCase):
         with patch.dict(sys.modules,{'torch':fake_torch}):
             module=importlib.import_module('hub_runtime.inference')
             try:
-                model=Model();processor=Processor();results=module.run_batch(requests,backend=(model,processor,'cuda:0',24000),codec_lock=threading.RLock(),native=native)
-                self.assertEqual(len(model.calls),1);self.assertEqual(processor.events,['encode','decode']);self.assertEqual(model.calls[0]['input_ids'].values.shape,(4,6))
-                for req,result in zip(requests,results):self.assertEqual(result[0][0],24000);self.assertEqual(result[0][1].tolist(),[ord(c) for c in req.text])
-                self.assertEqual([c[0]['expected_tokens'] for c in processor.conversations],[11,None,99,None]);self.assertIn('expected_tokens=99',results[2][1]);self.assertIn('English',results[1][1])
+                model=Model();processor=Processor()
+                with self.assertRaisesRegex(ValueError,'one native row only'):
+                    module.run_batch(requests,backend=(model,processor,'cuda:0',24000),codec_lock=threading.RLock(),native=native)
+                self.assertEqual(model.calls,[])
+                for req in requests:
+                    results=module.run_batch([req],backend=(model,processor,'cuda:0',24000),codec_lock=threading.RLock(),native=native)
+                    self.assertEqual(len(results),1)
+                    self.assertEqual(results[0][0][1].tolist(),[ord(c) for c in req.text])
+                self.assertEqual(len(model.calls),4)
                 self.assertEqual(model.calls[0]['audio_temperature'],1.7);self.assertEqual(model.calls[0]['audio_top_p'],.8);self.assertEqual(model.calls[0]['audio_top_k'],25)
                 # A lone non-default penalty still uses the unchanged native call.
                 solo=module.run_batch([item('solo',repetition_penalty=1.15)],backend=(model,processor,'cuda:0',24000),codec_lock=threading.RLock(),native=native)

@@ -16,7 +16,8 @@ def run_batch(requests, *, backend, codec_lock, native):
     Processor owns left padding and attention masks. Shared CPU codec state is
     exclusive; a single native generate handles all compatible request rows.
     """
-    if not requests:raise ValueError("empty MOSS inference batch")
+    if len(requests)!=1:
+        raise ValueError("This MOSS backend is validated for one native row only")
     started_at = time.monotonic()
     model, processor, torch_device, sample_rate = backend
     conversations = []
