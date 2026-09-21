@@ -112,12 +112,38 @@ class MOSSAdoption(unittest.TestCase):
             return [(c['type'],{k:c['props'][k] for k in keys if k in c.get('props',{})}) for c in demo.config['components']]
         self.assertEqual(controls(original),controls(adopted))
         self.assertEqual([d['api_name'] for d in original.config['dependencies']],[d['api_name'] for d in adopted.config['dependencies']])
-        with patch.object(ui,'get_asr_client') as asr:
-            asr.return_value.predict.return_value='参考原文'
-            with patch.object(ui,'handle_file',return_value='file'):
-                self.assertEqual(ui.auto_fill_reference_transcript('ref.wav','后续文本',ui.MODE_CONTINUE),'参考原文\n后续文本')
-                self.assertEqual(ui.auto_fill_reference_transcript('ref.wav','原文',ui.MODE_CLONE),'原文')
-            self.assertEqual(asr.return_value.predict.call_count,1)
+        with patch.object(ui,'transcribe_reference_audio',return_value='参考原文') as asr:
+            self.assertEqual(ui.auto_fill_reference_transcript('ref.wav','后续文本',ui.MODE_CONTINUE),'参考原文\n后续文本')
+            self.assertEqual(ui.auto_fill_reference_transcript('ref.wav','原文',ui.MODE_CLONE),'原文')
+            asr.assert_called_once_with('ref.wav')
+
+    def test_asr_api_contract_and_visible_failure(self):
+        from hub_runtime import ui
+        self.assertEqual(
+            ui._extract_asr_transcript({'result':[{'text':'带标点文本','clean_text':'干净文本'}]}),
+            '干净文本',
+        )
+        self.assertEqual(ui._extract_asr_transcript({'result':['兼容文本']}),'兼容文本')
+        self.assertEqual(ui._extract_asr_transcript({'result':[]}), '')
+        response=types.SimpleNamespace(
+            raise_for_status=lambda:None,
+            json=lambda:{'result':[{'clean_text':'真实识别文本'}]},
+        )
+        def post(url,files,data,timeout):
+            self.assertEqual(url,'http://asrpri-api/api/v1/asr')
+            self.assertEqual(data,{'lang':'auto'})
+            self.assertEqual(timeout,120)
+            self.assertEqual(files['files'][0],'reference.wav')
+            self.assertEqual(files['files'][2],'audio/x-wav')
+            self.assertEqual(files['files'][1].read(),b'RIFFfixture')
+            return response
+        with tempfile.TemporaryDirectory() as directory,patch.object(ui.httpx,'post',side_effect=post) as request:
+            audio=Path(directory)/'reference.wav';audio.write_bytes(b'RIFFfixture')
+            self.assertEqual(ui.transcribe_reference_audio(str(audio)),'真实识别文本')
+            request.assert_called_once()
+        with patch.object(ui,'transcribe_reference_audio',side_effect=RuntimeError('offline')),patch.object(ui.gr,'Warning') as warning:
+            self.assertEqual(ui.auto_fill_reference_transcript('ref.wav','续写文本',ui.MODE_CONTINUE),'续写文本')
+            warning.assert_called_once_with('参考音频识别失败，请重新上传或稍后重试。')
 
     def test_loader_preserves_formal_split_and_release_clears_native_lru(self):
         from hub_runtime import adapter

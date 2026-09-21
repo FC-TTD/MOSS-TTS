@@ -1,7 +1,7 @@
 """Copied formal clis/moss_tts_app.py UI; only GPU lifecycle/callback wiring changes."""
 import argparse
-import functools
 import importlib.util
+import mimetypes
 from pathlib import Path
 import re
 import time
@@ -9,14 +9,14 @@ import orjson
 import os
 
 import gradio as gr
-from gradio_client import Client, handle_file
+import httpx
 import numpy as np
 
 MODEL_PATH = "OpenMOSS-Team/MOSS-TTS-v1.5"
 DEFAULT_ATTN_IMPLEMENTATION = "auto"
 DEFAULT_MAX_NEW_TOKENS = 4096
 CONTINUATION_NOTICE = (
-    "续写模式已启用。请把参考音频的原文放在输入文本最前面。"
+    "续写模式已启用。上传参考音频后会自动识别原文并填入文本开头，请在其后输入续写内容。"
 )
 
 MODE_CLONE = "克隆音色"
@@ -105,12 +105,42 @@ def build_example_rows() -> list[tuple[str, str, str]]:
 
 
 EXAMPLE_ROWS = build_example_rows()
-ASR_BACKEND_URL = os.environ.get("ASR_BACKEND_URL", "http://santi")
+ASR_BACKEND_URL = os.environ.get("ASR_BACKEND_URL", "http://asrpri-api").rstrip("/")
+ASR_API_PATH = os.environ.get("ASR_API_PATH", "/api/v1/asr")
+ASR_REQUEST_TIMEOUT = float(os.environ.get("ASR_REQUEST_TIMEOUT", "120"))
 
 
-@functools.lru_cache(maxsize=1)
-def get_asr_client() -> Client:
-    return Client(ASR_BACKEND_URL)
+def _extract_asr_transcript(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    results = payload.get("result")
+    if not isinstance(results, list) or not results:
+        return ""
+    first = results[0]
+    if isinstance(first, str):
+        return first.strip()
+    if not isinstance(first, dict):
+        return ""
+    for field in ("clean_text", "text", "raw_text"):
+        value = str(first.get(field) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def transcribe_reference_audio(reference_audio: str) -> str:
+    audio_path = Path(reference_audio)
+    content_type = mimetypes.guess_type(audio_path.name)[0] or "application/octet-stream"
+    endpoint = f"{ASR_BACKEND_URL}/{ASR_API_PATH.lstrip('/')}"
+    with audio_path.open("rb") as audio_file:
+        response = httpx.post(
+            endpoint,
+            files={"files": (audio_path.name, audio_file, content_type)},
+            data={"lang": "auto"},
+            timeout=ASR_REQUEST_TIMEOUT,
+        )
+    response.raise_for_status()
+    return _extract_asr_transcript(response.json())
 
 
 def auto_fill_reference_transcript(
@@ -123,16 +153,15 @@ def auto_fill_reference_transcript(
         return current_text
 
     try:
-        transcript = get_asr_client().predict(
-            handle_file(reference_audio),
-            api_name="/auto_asr",
-        )
+        transcript = transcribe_reference_audio(reference_audio)
     except Exception as exc:
         print(f"[ASR] Failed to transcribe reference audio: {exc}", flush=True)
+        gr.Warning("参考音频识别失败，请重新上传或稍后重试。")
         return current_text
 
     transcript = str(transcript or "").strip()
     if not transcript:
+        gr.Warning("未从参考音频中识别到文本，请更换音频或手动输入原文。")
         return current_text
     if current_text.startswith(transcript):
         return current_text
@@ -550,7 +579,5 @@ def build_ui(runtime):
             outputs=[output_audio, status],
         )
     return demo.queue(max_size=16, default_concurrency_limit=1)
-
-
 
 
